@@ -57,7 +57,7 @@ function AdamEIP(){
         di15: 0
     }
 
-
+//zxxzx
 }
 AdamEIP.prototype.initiateConnection = function (cParam, callback) {
     var self = this;
