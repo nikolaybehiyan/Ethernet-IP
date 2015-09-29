@@ -56,8 +56,6 @@ function AdamEIP(){
         di14: 0,
         di15: 0
     }
-
-//zxxzx
 }
 AdamEIP.prototype.initiateConnection = function (cParam, callback) {
     var self = this;
@@ -97,7 +95,7 @@ AdamEIP.prototype.onTCPConnect = function() {
     // Track the connection state
      self.isoConnectionState = 2;  // 2 = TCP connected, wait for EIP connection confirmation
 
-    // Send an EIP connection request.
+    // Send a connection request.
     self.connectTimeout = setTimeout(function(){
         self.packetTimeout.apply(self,arguments);
     }, self.globalTimeout);
@@ -109,13 +107,6 @@ AdamEIP.prototype.onTCPConnect = function() {
         console.log('Received response on GET SESSION');
         self.onEIPConnectReply.apply(self, arguments);
     });
-
-    // Hook up the event that fires on disconnect
-    //self.isoclient.on('end',function() {
-    //  console.log('END CALLED');
-    //  self.endCalled = true;
-    //  self.onClientDisconnect.apply(self, arguments);
-    //});
 };
 AdamEIP.prototype.onEIPConnectReply = function(data) {
     var self = this;
@@ -125,7 +116,7 @@ AdamEIP.prototype.onEIPConnectReply = function(data) {
     clearTimeout(self.connectTimeout);
 
     // Track the connection state
-    self.isoConnectionState = 4;  // 4 = Good to go.  (No PDU with EIP so 3 is an invalid state)
+    self.isoConnectionState = 4;  // 4 = Good to go.
 
     // First we check our error code in the EIP section.
     if (data[8] !== 0x00 || data[9] !== 0x00 || data[10] !== 0x00 || data[11] !== 0x00) {
@@ -170,9 +161,11 @@ AdamEIP.prototype.onEIPConnectReply = function(data) {
 
     return;
 };
-
+//initialize emitter to emit new values to OPC server
 AdamEIP.prototype.eventRead = new events.EventEmitter();
 
+
+// after the connection has been made and request for readitems has been sent, we wait for response and trigger response
 AdamEIP.prototype.onResponse = function(data) {
     var self = this;
 
@@ -182,7 +175,6 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log('DATA LESS THAN 24 BYTES RECEIVED.  TOTAL CONNECTION RESET.');
         console.log(data);
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
@@ -191,11 +183,9 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log("An oversize packet was detected.  Excess length is " + (data.length - data.readInt16LE(2) - 24) + ".  ");
         console.log("Usually because two packets were sent at nearly the same time by the PLC.");
         console.log("We slice the buffer and schedule the second half for later processing.");
-//		setTimeout(onResponse, 0, data.slice(data.readInt16LE(2) + 24));  // This re-triggers this same function with the sliced-up buffer.
         process.nextTick(function(){
             self.onResponse(data.slice(data.readInt16LE(2) + 24))
-        });  // This re-triggers this same function with the sliced-up buffer.
-// was used as a test		setTimeout(process.exit, 2000);
+        });
     }
 
     if (data.readInt32LE(4) !== self.sessionHandle) { // not even long enough for EIP header
@@ -203,7 +193,6 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log('Expected ' + decimalToHexString(self.sessionHandle) + ' received ' + decimalToHexString(data.readInt32LE(4)));
         console.log(data);
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
@@ -211,7 +200,6 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log('EIP ERROR RECEIVED at zero-based offset 8/9/10/11');
         console.log(data);
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
@@ -221,11 +209,9 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log(data);
         console.log('Codes are ' + data[8] + " " + data[9] + " " + data[10] + " " + data[11]);
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
-    // Do we check our context?  Let's not bother.
 
     // Expected length is from packet sniffing - some applications may be different
     if (data[0] !== 0x6f || data.readInt16LE(2) > (data.length - 24)) {
@@ -233,7 +219,6 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log(data);
         console.log('RCV buffer length is ' + data.length + ' and data[0] is ' + data[0] + ' and DRI16LE2 is ' + data.readInt16LE(2));
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
@@ -243,15 +228,14 @@ AdamEIP.prototype.onResponse = function(data) {
         console.log('CIP ERROR RECEIVED at zero-based offset 8/9/10/11 or non-zero value at packet offset 34');
         console.log(data);
         self.connectionReset();
-//		setTimeout(connectNow, 2000, connectionParams);
         return null;
     }
 
 
-
+//PCCCdata is the packet that we received from adam
+    //extract UDP ip address
     var PCCCData = data.slice(98,102);  // added length spec
 
-    //console.log('Received  bytes of PCCC-data from PLC.', t);
     console.log(PCCCData, 2);
     var udpAddr = PCCCData.toString('hex');
 
@@ -276,7 +260,9 @@ AdamEIP.prototype.onResponse = function(data) {
         self.udpCLient = dgram.createSocket({type:'udp4', reuseAddr: true});
         self.udpCLient.bind(2222, function() {
             console.log(a1,b1,c1,d1);
+            //subscribe to UDP ip address
             self.udpCLient.addMembership(a1 + '.' + b1 + '.' + c1 + '.' + d1);
+            //catch data that is pushed by adam through previously extracted ip address
             self.udpCLient.on('message', function(msg) {
                 clearTimeout(self.packetNotReceived);
                 self.packetNotReceived = setTimeout(function(){
@@ -284,6 +270,9 @@ AdamEIP.prototype.onResponse = function(data) {
                     self.connectionReset();
                     return;
                 },3000);
+
+                //split data into readable bit values
+
                 var bitMessage = msg.slice(msg.length - 2, msg.length).toString('hex');
                 var counter = msg.readInt32LE(msg.length - 12);
                 var bit1 = parseInt(bitMessage.substring(0,2),16).toString(2);
@@ -315,7 +304,11 @@ AdamEIP.prototype.onResponse = function(data) {
                 self.diArr.di14 = bit2.substring(1,2);
                 self.diArr.di15 = bit2.substring(0,1);
 
+                //emit the new params
                 self.eventRead.emit('newData');
+
+                //Adam sends only 500 udp packets and then closes the session
+                //we need to reestablish new udp connection and resend readpacket request
                 if (counter == 499 || counter == 500){
                     self.udpCLient.removeAllListeners('message');
                     self.udpCLient.removeAllListeners('error');
@@ -337,6 +330,7 @@ AdamEIP.prototype.onResponse = function(data) {
 
 };
 
+// resend readPacket when adam closes udp connection
 AdamEIP.prototype.resendReadPacket = function(){
     var self = this;
     clearTimeout(self.resend);
@@ -344,14 +338,17 @@ AdamEIP.prototype.resendReadPacket = function(){
 
 };
 
+
 AdamEIP.prototype.getDi = function(){
     var self = this;
     return self.diArr;
 
 };
+
+
 AdamEIP.prototype.sendReadPacket = function() {
     var self = this;
-    var i, j, curLength, routerLength;
+    var  curLength, routerLength;
     var flagReconnect = false;
 
     console.log("SendReadPacket called",1,self.connectionID);
@@ -362,33 +359,23 @@ AdamEIP.prototype.sendReadPacket = function() {
         // We always need an EIP header with the CIP interface handle, etc.
         self.EIP_CIP_Header.copy(self.readReq, curLength);
         curLength = self.EIP_CIP_Header.length;
-        //console.log('1Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
 
         // This is the session handle that goes in the EIP header
         self.readReq.writeInt32LE(self.sessionHandle,4);
-        //console.log('2Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
-        // Sometimes we need the ask the message router to send the message for us.  That's what the routing header is for.
         if (self.Connection_Path.length > 0) {
             self.Routing_Header.copy(self.readReq, curLength);
             curLength += self.Routing_Header.length;
             routerLength = self.Routing_Header.length;
-            //console.log('3Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength,routerLength);
         }
 
         // We always need the PCCC encapsulation header (0x4b) which sends the final message to the PCCC object of the controller.
         self.PCCC_Encapsulation_Header.copy(self.readReq, curLength);
         curLength += self.PCCC_Encapsulation_Header.length;
-        //console.log('4Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
-        // Write the sequence number to the offset in the PCCC encapsulation header.  Eventually this should be moved to within the FOR loop if we keep a FOR loop.  But with only one PCCC command per packet we don't care.
-        //self.readReq.writeUInt16LE(self.readPacketArray[i].seqNum, curLength - 2); // right at the end of the PCCC encapsulation header
-        //console.log('5Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
-        // The FOR loop is left in here for now, but really we are only doing one request per packet for now.
 
         if (routerLength && ((self.PCCC_Encapsulation_Header.length) % 2)) {
             self.readReq[curLength] = 0x00;  // Pad byte
             curLength += 1;
             routerLength += 1;  // Important as this counts towards the length written to the message
-            //console.log('7Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
         }
 
         // Now we add the connection path length.
@@ -396,29 +383,21 @@ AdamEIP.prototype.sendReadPacket = function() {
             self.Connection_Path.copy(self.readReq, curLength);
             curLength += self.Connection_Path.length;
             routerLength += self.Connection_Path.length;
-            //console.log('8Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
         }
 
         // This is the overall message length for the EIP header
         self.readReq.writeUInt16LE(curLength - 24, 2);
-        //console.log('9Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
         console.log("The PCCC Encapsulation Header is:", 2);
         console.log(self.PCCC_Encapsulation_Header, 2);
 
         // This is the overall message length for either the message sent to the message router OR the message sent to the controller directly if we aren't using a router.
         self.readReq.writeUInt16LE( self.PCCC_Encapsulation_Header.length + routerLength, 38); //returnedBfr.length +
-        //console.log('10Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
-        if (routerLength > 0) {
-            // This is the message length of the "message in a message" to notify the message router.
-            //self.readReq.writeUInt16LE(returnedBfr.length + self.PCCC_Encapsulation_Header.length, self.EIP_CIP_Header.length + self.Routing_Header.length - 2);
-            //console.log('11Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
-        }
+
 
         if (self.isoConnectionState == 4) {
 
             self.isoclient.write(self.readReq.slice(0,curLength));  // was 31
 
-            //console.log('12Read req is ', self.readReq.toString('hex').substring(0,curLength*2),'  Length is ',curLength);
         } else {
 
             if (!flagReconnect) {
@@ -435,13 +414,15 @@ AdamEIP.prototype.sendReadPacket = function() {
 
     if (flagReconnect) {
         setTimeout(function() {
-//			console.log("Next tick is here and my ID is " + self.connectionID);
             console.log("The scheduled reconnect from sendReadPacket is happening now",1,self.connectionID);
             self.connectNow(self.connectionParams);  // We used to do this NOW - not NextTick() as we need to mark isoConnectionState as 1 right now.  Otherwise we queue up LOTS of connects and crash.
         }, 0);
     }
 
 };
+//FROM HERE ERROR HANDLING
+
+
 AdamEIP.prototype.connectError = function(e) {
     var self = this;
 

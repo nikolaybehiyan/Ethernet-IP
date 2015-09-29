@@ -5,6 +5,7 @@ var opcua = require("node-opcua");
 // Let's create an instance of OPCUAServer
 function OpcUAServer(){
     this.server = undefined;
+    //define array of digitsl inputs
     this.adamParams = {
         di0: 0,
         di1: 0,
@@ -59,17 +60,12 @@ OpcUAServer.prototype.construct_my_address_space = function(){
     var self = this;
     var digitalInputs = self.adamParams;
 
-    //console.log(self.server);
-     //declare some folders
     console.log(digitalInputs);
 
-        //console.log(self.server.engine)
         self.server.engine.addFolder("Objects",{ browseName: "MyDevice"});
 
-        //console.log(self.adamParams.di1);
 
     // add variables in folders
-    //
     self.server.nodeVariable1 = self.server.engine.addVariable("MyDevice",{
         nodeId: "ns=4;s=di0",
         browseName: "di0",
@@ -258,7 +254,7 @@ OpcUAServer.prototype.setAdamParams = function(adamParams){
 };
 
 
-
+//export this class so that we can use this class in another file
 module.exports = OpcUAServer;
 
 
